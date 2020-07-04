@@ -64,6 +64,7 @@ RUN apk add --update \
   build-base \
   coreutils \
   freetype-dev \
+  git \
   lame-dev \
   libogg-dev \
   libass \
@@ -84,6 +85,11 @@ RUN apk add --update \
 
 RUN echo http://dl-cdn.alpinelinux.org/alpine/edge/community >> /etc/apk/repositories
 RUN apk add --update fdk-aac-dev
+
+RUN git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git && \
+  cd nv-codec-headers && \
+  make && \
+  make install
 
 # Get FFmpeg source.
 RUN cd /tmp/ && \
