@@ -1,32 +1,29 @@
 ARG NGINX_VERSION=1.16.1
-ARG NGINX_RTMP_VERSION=1.2.1
-ARG FFMPEG_VERSION=4.2.2
+ARG NGINX_RTMP_VERSION=23ec4ce2d769830124abf3be1353dd9b105ab09c
+ARG FFMPEG_VERSION=4.3
+ARG NV_CODEC_VERSION=n9.1.23.1
 
 
 ##############################
 # Build the NGINX-build image.
-FROM alpine:3.11 as build-nginx
+FROM nvidia/cuda:10.2-devel as build-nginx
 ARG NGINX_VERSION
 ARG NGINX_RTMP_VERSION
 
 # Build dependencies.
-RUN apk add --update \
-  build-base \
+RUN apt update && apt install -y \
   ca-certificates \
   curl \
   gcc \
   libc-dev \
-  libgcc \
-  linux-headers \
   make \
-  musl-dev \
-  openssl \
-  openssl-dev \
-  pcre \
-  pcre-dev \
-  pkgconf \
-  pkgconfig \
-  zlib-dev
+  libssl-dev \
+  libpcre3 \
+  libpcre3-dev \
+  linux-headers-$(uname -r) \
+  pkg-config \
+  wget \
+  zlib1g-dev
 
 # Get nginx source.
 RUN cd /tmp && \
@@ -36,8 +33,8 @@ RUN cd /tmp && \
 
 # Get nginx-rtmp module.
 RUN cd /tmp && \
-  wget https://github.com/arut/nginx-rtmp-module/archive/v${NGINX_RTMP_VERSION}.tar.gz && \
-  tar zxf v${NGINX_RTMP_VERSION}.tar.gz && rm v${NGINX_RTMP_VERSION}.tar.gz
+  wget https://github.com/sergey-dryabzhinsky/nginx-rtmp-module/archive/${NGINX_RTMP_VERSION}.tar.gz && \
+  tar zxf ${NGINX_RTMP_VERSION}.tar.gz && rm ${NGINX_RTMP_VERSION}.tar.gz
 
 # Compile nginx with nginx-rtmp module.
 RUN cd /tmp/nginx-${NGINX_VERSION} && \
@@ -50,40 +47,54 @@ RUN cd /tmp/nginx-${NGINX_VERSION} && \
   --with-http_ssl_module \
   --with-debug \
   --with-cc-opt="-Wimplicit-fallthrough=0" && \
-  cd /tmp/nginx-${NGINX_VERSION} && make && make install
+  cd /tmp/nginx-${NGINX_VERSION} && make -j4 && make install
 
 ###############################
 # Build the FFmpeg-build image.
-FROM alpine:3.11 as build-ffmpeg
+FROM nvidia/cuda:10.2-devel as build-ffmpeg
 ARG FFMPEG_VERSION
 ARG PREFIX=/usr/local
-ARG MAKEFLAGS="-j4"
+ARG NV_CODEC_VERSION
 
 # FFmpeg build dependencies.
-RUN apk add --update \
-  build-base \
+RUN apt update && apt install -y \
+  autoconf \
+  automake \
+  build-essential \
   coreutils \
-  freetype-dev \
-  lame-dev \
-  libogg-dev \
-  libass \
+  cmake \
+  git-core \
   libass-dev \
-  libvpx-dev \
-  libvorbis-dev \
-  libwebp-dev \
+  libfreetype6-dev \
+  libgnutls28-dev \
+  libfdk-aac-dev \
+  libmp3lame-dev \
+  libnuma-dev \
+  libogg-dev \
+  libopus-dev \
+  libsdl2-dev \
+  libssl-dev \
   libtheora-dev \
-  openssl-dev \
-  opus-dev \
-  pkgconf \
-  pkgconfig \
-  rtmpdump-dev \
+  libtool \
+  libva-dev \
+  libvdpau-dev \
+  libvorbis-dev \
+  libvpx-dev \
+  libwebp-dev \
+  libx264-dev \
+  libx265-dev \
+  nasm \
+  pkg-config \
+  texinfo \
   wget \
-  x264-dev \
-  x265-dev \
-  yasm
+  yasm \
+  zlib1g-dev
 
-RUN echo http://dl-cdn.alpinelinux.org/alpine/edge/community >> /etc/apk/repositories
-RUN apk add --update fdk-aac-dev
+RUN git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git && \
+  cd nv-codec-headers && \
+  git checkout ${NV_CODEC_VERSION} && \
+  make && \
+  make install
 
 # Get FFmpeg source.
 RUN cd /tmp/ && \
@@ -112,47 +123,63 @@ RUN cd /tmp/ffmpeg-${FFMPEG_VERSION} && \
   --enable-avresample \
   --enable-libfreetype \
   --enable-openssl \
+  --enable-nvenc \
+  --enable-cuda \
+  --enable-cuvid \
+  --extra-cflags=-I/usr/local/cuda/include \
+  --extra-ldflags=-L/usr/local/cuda/lib64 \
   --disable-debug \
   --disable-doc \
   --disable-ffplay \
   --extra-libs="-lpthread -lm" && \
-  make && make install && make distclean
+  make -j4 && make install && make distclean
 
 # Cleanup.
 RUN rm -rf /var/cache/* /tmp/*
 
 ##########################
 # Build the release image.
-FROM alpine:3.11
-LABEL MAINTAINER Alfred Gutierrez <alf.g.jr@gmail.com>
+FROM nvidia/cuda:10.2-base
+LABEL MAINTAINER Marc Khouri <github@khouri.ca>
 
 # Set default ports.
 ENV HTTP_PORT 80
 ENV HTTPS_PORT 443
 ENV RTMP_PORT 1935
 
-RUN apk add --update \
+RUN apt update && apt install -y \
   ca-certificates \
   gettext \
   openssl \
-  pcre \
   lame \
-  libogg \
+  libogg0 \
   curl \
-  libass \
-  libvpx \
-  libvorbis \
-  libwebp \
-  libtheora \
-  opus \
+  libass9 \
+  libasound2 \
+  libfdk-aac1 \
+  libsdl2-2.0-0 \
+  libsndio6.1 \
+  libva2 \
+  libvpx5 \
+  libvorbis0a \
+  libwebp6 \
+  libtheora0 \
+  libopus0 \
+  libpcre3 \
+  libxcb-shape0 \
+  libxcb-xfixes0 \
+  libxv1 \
+  libva-drm2 \
+  libva-x11-2 \
+  libvdpau1 \
+  libwebpmux3 \
   rtmpdump \
-  x264-dev \
-  x265-dev
+  libx264-dev \
+  libx265-dev
 
 COPY --from=build-nginx /usr/local/nginx /usr/local/nginx
 COPY --from=build-nginx /etc/nginx /etc/nginx
 COPY --from=build-ffmpeg /usr/local /usr/local
-COPY --from=build-ffmpeg /usr/lib/libfdk-aac.so.2 /usr/lib/libfdk-aac.so.2
 
 # Add NGINX path, config and static files.
 ENV PATH "${PATH}:/usr/local/nginx/sbin"
