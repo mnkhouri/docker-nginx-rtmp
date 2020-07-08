@@ -2,13 +2,18 @@ ARG NGINX_VERSION=1.16.1
 ARG NGINX_RTMP_VERSION=23ec4ce2d769830124abf3be1353dd9b105ab09c
 ARG FFMPEG_VERSION=4.3
 ARG NV_CODEC_VERSION=n9.1.23.1
-
+ARG LUAJIT_VERSION=2.1-20200102
+ARG NGX_VERSION=0.3.1
+ARG LUA_NGINX_VERSION=0.10.15
 
 ##############################
 # Build the NGINX-build image.
 FROM nvidia/cuda:10.2-devel as build-nginx
 ARG NGINX_VERSION
 ARG NGINX_RTMP_VERSION
+ARG LUAJIT_VERSION
+ARG NGX_VERSION
+ARG LUA_NGINX_VERSION
 
 # Build dependencies.
 RUN apt update && apt install -y \
@@ -18,9 +23,11 @@ RUN apt update && apt install -y \
   libc-dev \
   make \
   libssl-dev \
+  libluajit-5.1-dev \
   libpcre3 \
   libpcre3-dev \
   linux-headers-$(uname -r) \
+  luajit \
   pkg-config \
   wget \
   zlib1g-dev
@@ -31,16 +38,31 @@ RUN cd /tmp && \
   tar zxf nginx-${NGINX_VERSION}.tar.gz && \
   rm nginx-${NGINX_VERSION}.tar.gz
 
+# Get Ngx Devel Kit
+RUN cd /tmp && \
+  wget https://github.com/vision5/ngx_devel_kit/archive/v${NGX_VERSION}.tar.gz && \
+  tar zxf v${NGX_VERSION}.tar.gz && rm v${NGX_VERSION}.tar.gz
+
+# Get lua-nginx module
+RUN cd /tmp && \
+  wget https://github.com/openresty/lua-nginx-module/archive/v${LUA_NGINX_VERSION}.tar.gz && \
+  tar zxf v${LUA_NGINX_VERSION}.tar.gz && rm v${LUA_NGINX_VERSION}.tar.gz
+
 # Get nginx-rtmp module.
 RUN cd /tmp && \
   wget https://github.com/sergey-dryabzhinsky/nginx-rtmp-module/archive/${NGINX_RTMP_VERSION}.tar.gz && \
   tar zxf ${NGINX_RTMP_VERSION}.tar.gz && rm ${NGINX_RTMP_VERSION}.tar.gz
 
-# Compile nginx with nginx-rtmp module.
+# Compile nginx with nginx-rtmp module and Lua support
 RUN cd /tmp/nginx-${NGINX_VERSION} && \
+  export LUAJIT_LIB=/usr/lib && \
+  export LUAJIT_INC=/usr/include/luajit-2.1 && \
   ./configure \
+  --with-ld-opt="-Wl,-rpath,$LUAJIT_LIB" \
   --prefix=/usr/local/nginx \
   --add-module=/tmp/nginx-rtmp-module-${NGINX_RTMP_VERSION} \
+  --add-module=/tmp/ngx_devel_kit-${NGX_VERSION} \
+  --add-module=/tmp/lua-nginx-module-${LUA_NGINX_VERSION} \
   --conf-path=/etc/nginx/nginx.conf \
   --with-threads \
   --with-file-aio \
@@ -173,9 +195,11 @@ RUN apt update && apt install -y \
   libva-x11-2 \
   libvdpau1 \
   libwebpmux3 \
-  rtmpdump \
   libx264-dev \
-  libx265-dev
+  libx265-dev \
+  luajit \
+  rtmpdump \
+  hdhomerun-config
 
 COPY --from=build-nginx /usr/local/nginx /usr/local/nginx
 COPY --from=build-nginx /etc/nginx /etc/nginx
