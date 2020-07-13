@@ -199,6 +199,7 @@ RUN apt update && apt install -y \
   libx265-dev \
   luajit \
   rtmpdump \
+  tzdata \
   hdhomerun-config
 
 COPY --from=build-nginx /usr/local/nginx /usr/local/nginx
